@@ -1,0 +1,58 @@
+name: Publish Dwarf Lord
+
+# Rebuilds https://mecca-research.github.io/Dwarf-Lord/ from the
+# Mecca-Research/Dwarf-Lord source repo. The user site is used because
+# GitHub App tokens cannot enable Pages on the project repo.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */6 * * *"
+  repository_dispatch:
+    types: [publish-dwarf-lord]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-dwarf-lord
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Pages site
+        uses: actions/checkout@v4
+        with:
+          path: site
+      - name: Checkout game source
+        uses: actions/checkout@v4
+        with:
+          repository: Mecca-Research/Dwarf-Lord
+          path: src
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/package-lock.json
+      - name: Build static game
+        working-directory: src
+        run: npm ci && npm run build:pages
+      - name: Copy into /Dwarf-Lord
+        run: |
+          rm -rf site/Dwarf-Lord
+          mkdir -p site/Dwarf-Lord
+          cp -a src/.output/public/. site/Dwarf-Lord/
+          touch site/.nojekyll site/Dwarf-Lord/.nojekyll
+      - name: Commit and push
+        working-directory: site
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No site changes"
+            exit 0
+          fi
+          git commit -m "Publish Dwarf Lord from source $(git -C ../src rev-parse --short HEAD)"
+          git push
